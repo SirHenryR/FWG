@@ -211,4 +211,109 @@ def main():
     input_file = args.input
     output_file = args.output
     max_length = args.max_length
-    max_chain = ar
+    max_chain = args.chain_max
+    quiet = args.quiet
+    gen_reverse = not args.no_reverse
+    gen_suffix = not args.no_suffix
+    
+    suffixes = DEFAULT_SUFFIXES if gen_suffix else [""]
+
+    # 1. Input laden
+    if not quiet:
+        print(f"Lade Input-Datei: {input_file}...")
+    
+    try:
+        original_entries, atomic_elements = load_input_file(input_file)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"FEHLER: {e}")
+        sys.exit(1)
+
+    if not original_entries:
+        print("FEHLER: Keine gültigen Einträge in der Input-Datei gefunden.")
+        sys.exit(1)
+
+    # Basis-Elemente zusammenführen und deduplizieren
+    base_elements = sorted(set(original_entries + atomic_elements))
+    
+    if not quiet:
+        print(f"  Original-Einträge: {len(original_entries)}")
+        print(f"  Atomare Elemente:  {len(atomic_elements)}")
+        print(f"  Gesamt-Basis:      {len(base_elements)}")
+        
+        if len(base_elements) > 50:
+            print(f"\nWARNUNG: Hohe Anzahl an Basis-Elementen ({len(base_elements)}).")
+            print("Die Generierung kann aufgrund der kombinatorischen Explosion sehr lange dauern.")
+            print("Drücke Enter zum Fortfahren oder Strg+C zum Abbrechen...")
+            input()
+
+    # 2. Generierung starten
+    if not quiet:
+        print(f"\nStarte Generierung (v{VERSION})...")
+        print(f"  Max. Länge: {max_length} | Max. Ketten: {max_chain}")
+        print(f"  Reverse: {'Ja' if gen_reverse else 'Nein'} | Suffixe: {'Ja' if gen_suffix else 'Nein'}")
+        print(f"  Ausgabe: {output_file}")
+        print("-" * 40)
+
+    count = 0
+    last_report = 0
+    start_time = time.time()
+
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            for chain in stream_chains(base_elements, SEPARATORS, max_chain, max_length):
+                # 1. Basis schreiben
+                f.write(chain + "\n")
+                count += 1
+
+                # 2. Suffixe schreiben
+                if gen_suffix:
+                    for suf in suffixes:
+                        if suf:
+                            cand = chain + suf
+                            if len(cand) <= max_length:
+                                f.write(cand + "\n")
+                                count += 1
+
+                # 3. Reverse schreiben
+                if gen_reverse:
+                    rev = chain[::-1]
+                    if rev != chain:
+                        f.write(rev + "\n")
+                        count += 1
+                        if gen_suffix:
+                            for suf in suffixes:
+                                if suf:
+                                    cand = rev + suf
+                                    if len(cand) <= max_length:
+                                        f.write(cand + "\n")
+                                        count += 1
+
+                # Status-Check
+                if not quiet and count - last_report >= REPORT_INTERVAL:
+                    elapsed = time.time() - start_time
+                    rate = count / elapsed if elapsed > 0 else 0
+                    print(f"[Status] {count:,} Einträge generiert ({rate:.0f} Einträge/sec)")
+                    last_report = count
+
+    except KeyboardInterrupt:
+        print("\n\nAbbruch durch Benutzer.")
+        print(f"Abgebrochen bei {count:,} Einträgen.")
+        sys.exit(1)
+
+    # 3. Abschluss
+    elapsed = time.time() - start_time
+    rate = count / elapsed if elapsed > 0 else 0
+
+    if not quiet:
+        print("-" * 40)
+        print(f"FERTIG. {count:,} Einträge in {elapsed:.1f} Sekunden.")
+        print(f"Geschwindigkeit: {rate:,.0f} Einträge/sec")
+        print(f"Datei: {output_file}")
+        print(f"Skript-Version: v{VERSION} ({VERSION_DATE})")
+        print(f"\nEmpfohlener nächster Schritt (Deduplizierung & Sortierung):")
+        print(f"  sort -u {output_file} -o {output_file.replace('.txt', '_final.txt')}")
+    else:
+        print(f"{count}")
+
+if __name__ == "__main__":
+    main()
