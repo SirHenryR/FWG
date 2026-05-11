@@ -1,0 +1,2 @@
+# FWG
+Forensic Wordlist Generator
